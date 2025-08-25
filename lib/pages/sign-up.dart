@@ -37,6 +37,16 @@ class SignUpState extends State<SignUp> {
   bool _bottomSheetVisible = false;
   int _autoCaptured = 0;
   final List<List> _enrollmentSamples = [];
+  // Track pose-targeted captures: FRONT, LEFT, RIGHT, UP_OR_DOWN
+  final Set<String> _capturedPoses = <String>{};
+  static const int _requiredSamples = 4;
+  static const List<String> _poseOrder = <String>[
+    'FRONT',
+    'LEFT',
+    'RIGHT',
+    'UP_OR_DOWN',
+  ];
+  bool _openingSheet = false;
   final TextEditingController _userController = TextEditingController(text: '');
   final TextEditingController _passwordController =
       TextEditingController(text: '');
@@ -60,10 +70,29 @@ class SignUpState extends State<SignUp> {
 
   _start() async {
     setState(() => _initializing = true);
-    await _cameraService.initialize();
-    setState(() => _initializing = false);
-
-    _frameFaces();
+    try {
+      // Ensure dependent services are ready (in case SignUp is entered directly)
+      await _cameraService.initialize();
+      try {
+        _faceDetectorService.initialize();
+      } catch (_) {}
+      try {
+        // Initialize ML only if not already loaded
+        await _mlService.initialize();
+      } catch (_) {}
+      _frameFaces();
+    } catch (e) {
+      try {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            content: Text('Camera failed to start. Please try again.'),
+          ),
+        );
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _initializing = false);
+    }
   }
 
   Future<bool> onShot() async {
@@ -144,26 +173,53 @@ class SignUpState extends State<SignUp> {
             setState(() {
               faceDetected = _faceDetectorService.faces[0];
             });
-            // Auto-capture embeddings when face is steady, collect 3 samples
-            if (!_bottomSheetVisible && _autoCaptured < 3) {
-              _mlService.setCurrentPrediction(image, faceDetected);
-              // Add a short throttle by toggling _saving for a moment
-              _saving = true;
-              Future.delayed(Duration(milliseconds: 250)).then((_) {
-                if (!mounted) return;
-                setState(() {
-                  _saving = false;
-                  final List emb = List.from(_mlService.predictedData);
-                  if (emb.isNotEmpty) {
-                    _enrollmentSamples.add(emb);
-                    _autoCaptured = _enrollmentSamples.length;
+            // Auto-capture embeddings based on head pose until 4 targeted samples collected
+            if (!_bottomSheetVisible && _autoCaptured < _requiredSamples) {
+              final String? pose = _currentPose(faceDetected);
+              if (pose != null && !_capturedPoses.contains(pose) && !_saving) {
+                _mlService.setCurrentPrediction(image, faceDetected);
+                // Throttle to avoid duplicate captures
+                _saving = true;
+                Future.delayed(Duration(milliseconds: 450)).then((_) async {
+                  if (!mounted) return;
+                  setState(() {
+                    final List emb = List.from(_mlService.predictedData);
+                    if (emb.isNotEmpty) {
+                      _enrollmentSamples.add(emb);
+                      _capturedPoses.add(pose);
+                      _autoCaptured = _enrollmentSamples.length;
+                    }
+                    _saving = false;
+                  });
+                  if (_autoCaptured >= _requiredSamples &&
+                      !_bottomSheetVisible) {
+                    // Before opening sheet, ensure this face is not already registered
+                    try {
+                      final centroid = _mlService.centroidFromSamples(
+                          _enrollmentSamples
+                              .map((e) => e.cast<num>())
+                              .toList());
+                      final existing =
+                          await _mlService.predictFromEmbedding(centroid);
+                      if (!mounted) return;
+                      if (existing != null) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            content: Text(
+                                'This face is already registered as ' +
+                                    existing.user +
+                                    '.'),
+                          ),
+                        );
+                        _reload();
+                        return;
+                      }
+                    } catch (_) {}
+                    _openSignUpSheet();
                   }
                 });
-                // When enough samples collected, open sign-up sheet
-                if (_autoCaptured >= 3 && !_bottomSheetVisible) {
-                  _openSignUpSheet();
-                }
-              });
+              }
             }
           } else {
             print('face is null');
@@ -181,19 +237,78 @@ class SignUpState extends State<SignUp> {
     });
   }
 
+  // Determine pose bucket using head Euler angles
+  String? _currentPose(Face? fd) {
+    if (fd == null) return null;
+    final double? yaw = fd.headEulerAngleY; // left/right
+    final double? pitch = fd.headEulerAngleX; // up/down
+    const double yawThresh = 15.0; // degrees
+    const double pitchThresh = 10.0; // degrees
+
+    if (yaw != null && yaw < -yawThresh) return 'LEFT';
+    if (yaw != null && yaw > yawThresh) return 'RIGHT';
+    if (pitch != null && (pitch < -pitchThresh || pitch > pitchThresh)) {
+      return 'UP_OR_DOWN';
+    }
+    return 'FRONT';
+  }
+
+  String? _nextPoseTarget() {
+    for (final String p in _poseOrder) {
+      if (!_capturedPoses.contains(p)) return p;
+    }
+    return null;
+  }
+
+  String _poseLabel(String pose) {
+    switch (pose) {
+      case 'FRONT':
+        return 'Look straight ahead';
+      case 'LEFT':
+        return 'Turn your head left';
+      case 'RIGHT':
+        return 'Turn your head right';
+      case 'UP_OR_DOWN':
+        return 'Tilt your head slightly up/down';
+      default:
+        return 'Hold still';
+    }
+  }
+
   Future<void> _openSignUpSheet() async {
+    if (_openingSheet) return;
+    _openingSheet = true;
     try {
+      if (mounted) {
+        setState(() {
+          _bottomSheetVisible = true;
+          imageSize = null;
+        });
+      }
       await _cameraService.stopImageStreamIfActive();
       await _cameraService.dispose();
-      if (!mounted) return;
-      setState(() {
-        _bottomSheetVisible = true;
-      });
-      PersistentBottomSheetController bottomSheetController =
-          Scaffold.of(context)
-              .showBottomSheet((context) => _buildSignUpSheet(context));
-      bottomSheetController.closed.whenComplete(_reload);
-    } catch (_) {}
+
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => _buildSignUpSheet(context),
+      );
+      if (mounted) {
+        _reload();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _bottomSheetVisible = false;
+        });
+      }
+      try {
+        await _cameraService.initialize();
+        _frameFaces();
+      } catch (_) {}
+    } finally {
+      _openingSheet = false;
+    }
   }
 
   _onBackPressed() {
@@ -206,6 +321,7 @@ class SignUpState extends State<SignUp> {
       pictureTaken = false;
       _autoCaptured = 0;
       _enrollmentSamples.clear();
+      _capturedPoses.clear();
       _userController.text = '';
       _passwordController.text = '';
     });
@@ -243,7 +359,10 @@ class SignUpState extends State<SignUp> {
       );
     }
 
-    if (!_initializing && !pictureTaken && isPreviewReady) {
+    if (!_initializing &&
+        !pictureTaken &&
+        isPreviewReady &&
+        !_bottomSheetVisible) {
       body = Transform.scale(
         scale: 1.0,
         child: AspectRatio(
@@ -265,6 +384,51 @@ class SignUpState extends State<SignUp> {
                         painter: FacePainter(
                             face: faceDetected, imageSize: imageSize!),
                       ),
+                    // Guidance overlay
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 24),
+                        child: Container(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Captured: ' +
+                                    _autoCaptured.toString() +
+                                    ' / ' +
+                                    _requiredSamples.toString(),
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              SizedBox(height: 4),
+                              if (!_bottomSheetVisible &&
+                                  _autoCaptured < _requiredSamples)
+                                Text(
+                                  (() {
+                                    final String? next = _nextPoseTarget();
+                                    return next == null
+                                        ? 'Hold still'
+                                        : _poseLabel(next);
+                                  })(),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -282,18 +446,16 @@ class SignUpState extends State<SignUp> {
     }
 
     return Scaffold(
-        body: Stack(
-          children: [
-            body,
-            CameraHeader(
-              "SIGN UP",
-              onBackPressed: _onBackPressed,
-            )
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        // Remove capture FAB; auto-capturing from live stream
-        floatingActionButton: Container());
+      body: Stack(
+        children: [
+          body,
+          CameraHeader(
+            "SIGN UP",
+            onBackPressed: _onBackPressed,
+          )
+        ],
+      ),
+    );
   }
 
   Widget _buildSignUpSheet(BuildContext context) {
@@ -317,16 +479,17 @@ class SignUpState extends State<SignUp> {
           SizedBox(height: 10),
           Text('Samples captured: ' +
               _enrollmentSamples.length.toString() +
-              ' / 3'),
+              ' / ' +
+              _requiredSamples.toString()),
           SizedBox(height: 16),
           AppButton(
             text: 'SIGN UP',
             onPressed: () async {
-              if (_enrollmentSamples.length < 3) {
+              if (_enrollmentSamples.length < _requiredSamples) {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    content: Text('Please wait until 3 samples are captured.'),
+                    content: Text('Please wait until 4 samples are captured.'),
                   ),
                 );
                 return;
@@ -353,6 +516,18 @@ class SignUpState extends State<SignUp> {
                     content: Text('A similar face is already registered as ' +
                         existing.user +
                         '. Registration blocked.'),
+                  ),
+                );
+                return;
+              }
+              // Block if username already exists
+              final dbCheck =
+                  await DatabaseHelper.instance.getUserByUsername(user);
+              if (dbCheck != null) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    content: Text('Username already exists. Choose another.'),
                   ),
                 );
                 return;

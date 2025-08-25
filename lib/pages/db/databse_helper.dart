@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:face_net_authentication/pages/models/user.model.dart';
 import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static final _databaseName = "MyDatabase.db";
@@ -51,6 +51,18 @@ class DatabaseHelper {
     Database db = await instance.database;
     List<Map<String, dynamic>> users = await db.query(table);
     return users.map((u) => User.fromMap(u)).toList();
+  }
+
+  Future<User?> getUserByUsername(String username) async {
+    Database db = await instance.database;
+    final List<Map<String, dynamic>> rows = await db.query(
+      table,
+      where: '$columnUser = ?',
+      whereArgs: [username],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return User.fromMap(rows.first);
   }
 
   Future<int> deleteAll() async {
