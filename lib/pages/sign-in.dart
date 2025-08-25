@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:face_net_authentication/locator.dart';
 import 'package:face_net_authentication/pages/models/user.model.dart';
-import 'package:face_net_authentication/pages/widgets/auth_button.dart';
 import 'package:face_net_authentication/pages/widgets/camera_detection_preview.dart';
 import 'package:face_net_authentication/pages/widgets/camera_header.dart';
 import 'package:face_net_authentication/pages/widgets/signin_form.dart';
@@ -29,6 +28,7 @@ class SignInState extends State<SignIn> {
 
   bool _isPictureTaken = false;
   bool _isInitializing = false;
+  bool _bottomSheetVisible = false;
 
   @override
   void initState() {
@@ -68,29 +68,33 @@ class SignInState extends State<SignIn> {
     await _faceDetectorService.detectFacesFromImage(image!);
     if (_faceDetectorService.faceDetected) {
       _mlService.setCurrentPrediction(image, _faceDetectorService.faces[0]);
+      // Auto-authenticate when a known user is detected
+      if (!_bottomSheetVisible) {
+        final User? user = await _mlService.predict();
+        if (user != null && mounted) {
+          _bottomSheetVisible = true;
+          await _cameraService.stopImageStreamIfActive();
+          var bottomSheetController = scaffoldKey.currentState!
+              .showBottomSheet((context) => signInSheet(user: user));
+          bottomSheetController.closed.whenComplete(_reload);
+        }
+      }
     }
     if (mounted) setState(() {});
   }
 
-  Future<void> takePicture() async {
-    if (_faceDetectorService.faceDetected) {
-      await _cameraService.stopImageStreamIfActive();
-      await _cameraService.takePicture();
-      setState(() => _isPictureTaken = true);
-    } else {
-      showDialog(
-          context: context,
-          builder: (context) =>
-              AlertDialog(content: Text('No face detected!')));
-    }
-  }
+  Future<void> takePicture() async {}
 
   _onBackPressed() {
     Navigator.of(context).pop();
   }
 
   _reload() {
-    if (mounted) setState(() => _isPictureTaken = false);
+    if (mounted)
+      setState(() {
+        _isPictureTaken = false;
+        _bottomSheetVisible = false;
+      });
     _start();
   }
 
@@ -116,7 +120,7 @@ class SignInState extends State<SignIn> {
     Widget header = CameraHeader("LOGIN", onBackPressed: _onBackPressed);
     Widget body = getBodyWidget();
     Widget? fab;
-    if (!_isPictureTaken) fab = AuthButton(onTap: onTap);
+    // Remove manual capture button; login occurs automatically from live camera
 
     return Scaffold(
       key: scaffoldKey,

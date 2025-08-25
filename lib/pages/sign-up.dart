@@ -4,8 +4,11 @@ import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:face_net_authentication/locator.dart';
+import 'package:face_net_authentication/pages/db/databse_helper.dart';
+import 'package:face_net_authentication/pages/models/user.model.dart';
 import 'package:face_net_authentication/pages/widgets/FacePainter.dart';
-import 'package:face_net_authentication/pages/widgets/auth-action-button.dart';
+import 'package:face_net_authentication/pages/widgets/app_button.dart';
+import 'package:face_net_authentication/pages/widgets/app_text_field.dart';
 import 'package:face_net_authentication/pages/widgets/camera_header.dart';
 import 'package:face_net_authentication/services/camera.service.dart';
 import 'package:face_net_authentication/services/face_detector_service.dart';
@@ -32,6 +35,11 @@ class SignUpState extends State<SignUp> {
 
   bool _saving = false;
   bool _bottomSheetVisible = false;
+  int _autoCaptured = 0;
+  final List<List> _enrollmentSamples = [];
+  final TextEditingController _userController = TextEditingController(text: '');
+  final TextEditingController _passwordController =
+      TextEditingController(text: '');
 
   // service injection
   FaceDetectorService _faceDetectorService = locator<FaceDetectorService>();
@@ -136,10 +144,25 @@ class SignUpState extends State<SignUp> {
             setState(() {
               faceDetected = _faceDetectorService.faces[0];
             });
-            if (_saving) {
+            // Auto-capture embeddings when face is steady, collect 3 samples
+            if (!_bottomSheetVisible && _autoCaptured < 3) {
               _mlService.setCurrentPrediction(image, faceDetected);
-              setState(() {
-                _saving = false;
+              // Add a short throttle by toggling _saving for a moment
+              _saving = true;
+              Future.delayed(Duration(milliseconds: 250)).then((_) {
+                if (!mounted) return;
+                setState(() {
+                  _saving = false;
+                  final List emb = List.from(_mlService.predictedData);
+                  if (emb.isNotEmpty) {
+                    _enrollmentSamples.add(emb);
+                    _autoCaptured = _enrollmentSamples.length;
+                  }
+                });
+                // When enough samples collected, open sign-up sheet
+                if (_autoCaptured >= 3 && !_bottomSheetVisible) {
+                  _openSignUpSheet();
+                }
               });
             }
           } else {
@@ -158,6 +181,21 @@ class SignUpState extends State<SignUp> {
     });
   }
 
+  Future<void> _openSignUpSheet() async {
+    try {
+      await _cameraService.stopImageStreamIfActive();
+      await _cameraService.dispose();
+      if (!mounted) return;
+      setState(() {
+        _bottomSheetVisible = true;
+      });
+      PersistentBottomSheetController bottomSheetController =
+          Scaffold.of(context)
+              .showBottomSheet((context) => _buildSignUpSheet(context));
+      bottomSheetController.closed.whenComplete(_reload);
+    } catch (_) {}
+  }
+
   _onBackPressed() {
     Navigator.of(context).pop();
   }
@@ -166,6 +204,10 @@ class SignUpState extends State<SignUp> {
     setState(() {
       _bottomSheetVisible = false;
       pictureTaken = false;
+      _autoCaptured = 0;
+      _enrollmentSamples.clear();
+      _userController.text = '';
+      _passwordController.text = '';
     });
     this._start();
   }
@@ -250,8 +292,88 @@ class SignUpState extends State<SignUp> {
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        floatingActionButton: !_bottomSheetVisible
-            ? AuthActionButton(onPressed: onShot, reload: _reload)
-            : Container());
+        // Remove capture FAB; auto-capturing from live stream
+        floatingActionButton: Container());
+  }
+
+  Widget _buildSignUpSheet(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Register new user', style: TextStyle(fontSize: 20)),
+          SizedBox(height: 10),
+          AppTextField(
+            controller: _userController,
+            labelText: 'Your Name',
+          ),
+          SizedBox(height: 10),
+          AppTextField(
+            controller: _passwordController,
+            labelText: 'Password',
+            isPassword: true,
+          ),
+          SizedBox(height: 10),
+          Text('Samples captured: ' +
+              _enrollmentSamples.length.toString() +
+              ' / 3'),
+          SizedBox(height: 16),
+          AppButton(
+            text: 'SIGN UP',
+            onPressed: () async {
+              if (_enrollmentSamples.length < 3) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    content: Text('Please wait until 3 samples are captured.'),
+                  ),
+                );
+                return;
+              }
+              final String user = _userController.text.trim();
+              final String password = _passwordController.text.trim();
+              if (user.isEmpty || password.isEmpty) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    content: Text('Enter name and password.'),
+                  ),
+                );
+                return;
+              }
+              // Block if face already registered
+              final centroid = _mlService.centroidFromSamples(
+                  _enrollmentSamples.map((e) => e.cast<num>()).toList());
+              final existing = await _mlService.predictFromEmbedding(centroid);
+              if (existing != null) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    content: Text('A similar face is already registered as ' +
+                        existing.user +
+                        '. Registration blocked.'),
+                  ),
+                );
+                return;
+              }
+              final db = DatabaseHelper.instance;
+              final userToSave = User(
+                user: user,
+                password: password,
+                modelData: _enrollmentSamples,
+              );
+              await db.insert(userToSave);
+              if (!mounted) return;
+              Navigator.of(context).pop();
+            },
+            icon: Icon(
+              Icons.person_add,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
