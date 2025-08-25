@@ -1,48 +1,60 @@
+import 'dart:developer' as dev;
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+
 import 'package:camera/camera.dart';
 import 'package:face_net_authentication/pages/db/databse_helper.dart';
 import 'package:face_net_authentication/pages/models/user.model.dart';
 import 'package:face_net_authentication/services/image_converter.dart';
 import 'package:google_ml_kit/google_ml_kit.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as imglib;
+import 'package:tflite_flutter/tflite_flutter.dart';
 
 class MLService {
   Interpreter? _interpreter;
-  double threshold = 0.5;
+  // Cosine similarity threshold (higher is more similar). Typical range: 0.5 - 0.8
+  double threshold = 0.7;
 
   List _predictedData = [];
   List get predictedData => _predictedData;
 
   Future initialize() async {
-    late Delegate delegate;
+    // Force CPU on Android (Adreno GPU crash), allow GPU on iOS only
     try {
       if (Platform.isAndroid) {
-        delegate = GpuDelegateV2(
-          options: GpuDelegateOptionsV2(
-            isPrecisionLossAllowed: false,
-            inferencePreference: TfLiteGpuInferenceUsage.fastSingleAnswer,
-            inferencePriority1: TfLiteGpuInferencePriority.minLatency,
-            inferencePriority2: TfLiteGpuInferencePriority.auto,
-            inferencePriority3: TfLiteGpuInferencePriority.auto,
-          ),
-        );
-      } else if (Platform.isIOS) {
-        delegate = GpuDelegate(
-          options: GpuDelegateOptions(
-              allowPrecisionLoss: true,
-              waitType: TFLGpuDelegateWaitType.active),
-        );
+        final cpuOptions = InterpreterOptions()
+          ..threads = 2
+          ..useNnApiForAndroid = false;
+        _interpreter = await Interpreter.fromAsset(
+            'assets/mobilefacenet.tflite',
+            options: cpuOptions);
+        dev.log('TFLite loaded with CPU (XNNPACK) on Android');
+        return;
       }
-      var interpreterOptions = InterpreterOptions()..addDelegate(delegate);
 
-      this._interpreter = await Interpreter.fromAsset('mobilefacenet.tflite',
-          options: interpreterOptions);
+      if (Platform.isIOS) {
+        try {
+          final gpu = GpuDelegate();
+          final options = InterpreterOptions()..addDelegate(gpu);
+          _interpreter = await Interpreter.fromAsset(
+              'assets/mobilefacenet.tflite',
+              options: options);
+          dev.log('TFLite loaded with Metal GPU delegate');
+          return;
+        } catch (e) {
+          dev.log('iOS GPU delegate failed, falling back to CPU. $e');
+        }
+      }
+
+      final cpuOptions = InterpreterOptions()
+        ..threads = 1
+        ..useNnApiForAndroid = false;
+      _interpreter = await Interpreter.fromAsset('assets/mobilefacenet.tflite',
+          options: cpuOptions);
+      dev.log('TFLite loaded with CPU (fallback)');
     } catch (e) {
-      print('Failed to load model.');
-      print(e);
+      dev.log('Failed to load model. $e');
     }
   }
 
@@ -64,9 +76,14 @@ class MLService {
     return _searchResult(this._predictedData);
   }
 
+  // Predict using a provided embedding instead of the current prediction
+  Future<User?> predictFromEmbedding(List embedding) async {
+    return _searchResult(embedding);
+  }
+
   List _preProcess(CameraImage image, Face faceDetected) {
     imglib.Image croppedImage = _cropFace(image, faceDetected);
-    imglib.Image img = imglib.copyResizeCropSquare(croppedImage, 112);
+    imglib.Image img = imglib.copyResizeCropSquare(croppedImage, size: 112);
 
     Float32List imageAsList = imageToByteListFloat32(img);
     return imageAsList;
@@ -78,13 +95,13 @@ class MLService {
     double y = faceDetected.boundingBox.top - 10.0;
     double w = faceDetected.boundingBox.width + 10.0;
     double h = faceDetected.boundingBox.height + 10.0;
-    return imglib.copyCrop(
-        convertedImage, x.round(), y.round(), w.round(), h.round());
+    return imglib.copyCrop(convertedImage,
+        x: x.round(), y: y.round(), width: w.round(), height: h.round());
   }
 
   imglib.Image _convertCameraImage(CameraImage image) {
     var img = convertToImage(image);
-    var img1 = imglib.copyRotate(img, -90);
+    var img1 = imglib.copyRotate(img, angle: -90);
     return img1;
   }
 
@@ -95,10 +112,10 @@ class MLService {
 
     for (var i = 0; i < 112; i++) {
       for (var j = 0; j < 112; j++) {
-        var pixel = image.getPixel(j, i);
-        buffer[pixelIndex++] = (imglib.getRed(pixel) - 128) / 128;
-        buffer[pixelIndex++] = (imglib.getGreen(pixel) - 128) / 128;
-        buffer[pixelIndex++] = (imglib.getBlue(pixel) - 128) / 128;
+        final imglib.Pixel pixel = image.getPixel(j, i);
+        buffer[pixelIndex++] = (pixel.r - 128) / 128;
+        buffer[pixelIndex++] = (pixel.g - 128) / 128;
+        buffer[pixelIndex++] = (pixel.b - 128) / 128;
       }
     }
     return convertedBytes.buffer.asFloat32List();
@@ -108,30 +125,71 @@ class MLService {
     DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
     List<User> users = await _dbHelper.queryAllUsers();
-    double minDist = 999;
-    double currDist = 0.0;
+    double maxSim = -1.0;
+    double currSim = 0.0;
     User? predictedResult;
 
     print('users.length=> ${users.length}');
 
     for (User u in users) {
-      currDist = _euclideanDistance(u.modelData, predictedData);
-      if (currDist <= threshold && currDist < minDist) {
-        minDist = currDist;
+      final List representative = _representativeEmbedding(u.modelData);
+      currSim = _cosineSimilarity(representative, predictedData);
+      if (currSim >= threshold && currSim > maxSim) {
+        maxSim = currSim;
         predictedResult = u;
       }
     }
     return predictedResult;
   }
 
-  double _euclideanDistance(List? e1, List? e2) {
+  // If user.modelData is a list of lists (multiple samples), return centroid.
+  // Otherwise, return the single embedding as-is.
+  List<double> _representativeEmbedding(List data) {
+    if (data.isNotEmpty && data.first is List) {
+      final List<List<num>> samples =
+          data.cast<List>().map((e) => e.cast<num>()).toList();
+      return _centroid(samples);
+    }
+    return data.map((e) => (e as num).toDouble()).toList();
+  }
+
+  List<double> _centroid(List<List<num>> samples) {
+    if (samples.isEmpty) return [];
+    final int dim = samples.first.length;
+    final List<double> sum = List<double>.filled(dim, 0.0);
+    for (final List<num> s in samples) {
+      for (int i = 0; i < dim; i++) {
+        sum[i] += s[i].toDouble();
+      }
+    }
+    final double n = samples.length.toDouble();
+    for (int i = 0; i < dim; i++) {
+      sum[i] = sum[i] / n;
+    }
+    return sum;
+  }
+
+  // Expose a public centroid helper for enrollment flows
+  List<double> centroidFromSamples(List<List<num>> samples) {
+    return _centroid(samples);
+  }
+
+  double _cosineSimilarity(List? e1, List? e2) {
     if (e1 == null || e2 == null) throw Exception("Null argument");
 
-    double sum = 0.0;
+    double dot = 0.0;
+    double normA = 0.0;
+    double normB = 0.0;
     for (int i = 0; i < e1.length; i++) {
-      sum += pow((e1[i] - e2[i]), 2);
+      final double a = (e1[i] as num).toDouble();
+      final double b = (e2[i] as num).toDouble();
+      dot += a * b;
+      normA += a * a;
+      normB += b * b;
     }
-    return sqrt(sum);
+    final double denom = sqrt(normA) * sqrt(normB);
+    if (denom == 0.0) return -1.0;
+    return dot / denom;
   }
 
   void setPredictedData(value) {

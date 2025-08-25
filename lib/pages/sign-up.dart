@@ -1,16 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+
+import 'package:camera/camera.dart';
 import 'package:face_net_authentication/locator.dart';
 import 'package:face_net_authentication/pages/widgets/FacePainter.dart';
 import 'package:face_net_authentication/pages/widgets/auth-action-button.dart';
 import 'package:face_net_authentication/pages/widgets/camera_header.dart';
 import 'package:face_net_authentication/services/camera.service.dart';
-import 'package:face_net_authentication/services/ml_service.dart';
 import 'package:face_net_authentication/services/face_detector_service.dart';
-import 'package:camera/camera.dart';
-import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:face_net_authentication/services/ml_service.dart';
 import 'package:flutter/material.dart';
+import 'package:google_ml_kit/google_ml_kit.dart';
 
 class SignUp extends StatefulWidget {
   const SignUp({Key? key}) : super(key: key);
@@ -70,25 +71,26 @@ class SignUpState extends State<SignUp> {
 
       return false;
     } else {
-      _saving = true;
-      await Future.delayed(Duration(milliseconds: 500));
-      // await _cameraService.cameraController?.stopImageStream();
-      await Future.delayed(Duration(milliseconds: 200));
-      XFile? file = await _cameraService.takePicture();
-      imagePath = file?.path;
-
+      // Trigger one embedding capture from the live image stream
       setState(() {
-        _bottomSheetVisible = true;
-        pictureTaken = true;
+        _saving = true;
       });
-
-      return true;
+      // Wait until the stream loop captures and resets _saving
+      final int maxWaitMs = 2000;
+      int waited = 0;
+      while (_saving && waited < maxWaitMs) {
+        await Future.delayed(Duration(milliseconds: 50));
+        waited += 50;
+      }
+      // Return true if embedding captured
+      return !_saving;
     }
   }
 
   _frameFaces() {
     imageSize = _cameraService.getImageSize();
 
+    if (_cameraService.isStreamingImages) return;
     _cameraService.cameraController?.startImageStream((image) async {
       if (_cameraService.cameraController != null) {
         if (_detectingFaces) return;
@@ -142,8 +144,12 @@ class SignUpState extends State<SignUp> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
+    final bool isControllerReady = _cameraService.cameraController != null &&
+        _cameraService.cameraController!.value.isInitialized;
+    final bool isPreviewReady = isControllerReady && imageSize != null;
+
     late Widget body;
-    if (_initializing) {
+    if (_initializing || !isControllerReady) {
       body = Center(
         child: CircularProgressIndicator(),
       );
@@ -163,7 +169,7 @@ class SignUpState extends State<SignUp> {
       );
     }
 
-    if (!_initializing && !pictureTaken) {
+    if (!_initializing && !pictureTaken && isPreviewReady) {
       body = Transform.scale(
         scale: 1.0,
         child: AspectRatio(
@@ -180,16 +186,24 @@ class SignUpState extends State<SignUp> {
                   fit: StackFit.expand,
                   children: <Widget>[
                     CameraPreview(_cameraService.cameraController!),
-                    CustomPaint(
-                      painter: FacePainter(
-                          face: faceDetected, imageSize: imageSize!),
-                    ),
+                    if (imageSize != null)
+                      CustomPaint(
+                        painter: FacePainter(
+                            face: faceDetected, imageSize: imageSize!),
+                      ),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      );
+    }
+
+    // Fallback while waiting for preview readiness
+    if (!_initializing && !pictureTaken && !isPreviewReady) {
+      body = Center(
+        child: CircularProgressIndicator(),
       );
     }
 
@@ -205,11 +219,7 @@ class SignUpState extends State<SignUp> {
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: !_bottomSheetVisible
-            ? AuthActionButton(
-                onPressed: onShot,
-                isLogin: false,
-                reload: _reload,
-              )
+            ? AuthActionButton(onPressed: onShot, reload: _reload)
             : Container());
   }
 }

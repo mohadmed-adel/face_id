@@ -22,6 +22,16 @@ class CameraService {
     );
   }
 
+  bool get isStreamingImages =>
+      _cameraController?.value.isStreamingImages ?? false;
+
+  Future<void> stopImageStreamIfActive() async {
+    if (_cameraController != null &&
+        _cameraController!.value.isStreamingImages) {
+      await _cameraController!.stopImageStream();
+    }
+  }
+
   Future<CameraDescription> _getCameraDescription() async {
     List<CameraDescription> cameras = await availableCameras();
     return cameras.firstWhere((CameraDescription camera) =>
@@ -54,7 +64,9 @@ class CameraService {
 
   Future<XFile?> takePicture() async {
     assert(_cameraController != null, 'Camera controller not initialized');
-    await _cameraController?.stopImageStream();
+    if (_cameraController!.value.isStreamingImages) {
+      await _cameraController!.stopImageStream();
+    }
     XFile? file = await _cameraController?.takePicture();
     _imagePath = file?.path;
     return file;

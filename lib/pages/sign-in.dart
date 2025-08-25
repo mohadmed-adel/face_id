@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:camera/camera.dart';
 import 'package:face_net_authentication/locator.dart';
 import 'package:face_net_authentication/pages/models/user.model.dart';
 import 'package:face_net_authentication/pages/widgets/auth_button.dart';
@@ -7,9 +9,8 @@ import 'package:face_net_authentication/pages/widgets/camera_header.dart';
 import 'package:face_net_authentication/pages/widgets/signin_form.dart';
 import 'package:face_net_authentication/pages/widgets/single_picture.dart';
 import 'package:face_net_authentication/services/camera.service.dart';
-import 'package:face_net_authentication/services/ml_service.dart';
 import 'package:face_net_authentication/services/face_detector_service.dart';
-import 'package:camera/camera.dart';
+import 'package:face_net_authentication/services/ml_service.dart';
 import 'package:flutter/material.dart';
 
 class SignIn extends StatefulWidget {
@@ -52,6 +53,7 @@ class SignInState extends State<SignIn> {
 
   _frameFaces() async {
     bool processing = false;
+    if (_cameraService.isStreamingImages) return;
     _cameraService.cameraController!
         .startImageStream((CameraImage image) async {
       if (processing) return; // prevents unnecessary overprocessing.
@@ -72,6 +74,7 @@ class SignInState extends State<SignIn> {
 
   Future<void> takePicture() async {
     if (_faceDetectorService.faceDetected) {
+      await _cameraService.stopImageStreamIfActive();
       await _cameraService.takePicture();
       setState(() => _isPictureTaken = true);
     } else {

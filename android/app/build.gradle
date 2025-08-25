@@ -24,12 +24,13 @@ if (flutterVersionName == null) {
 }
 
 android {
+    namespace "com.example.FaceNet"
     aaptOptions {
         noCompress "tflite"
         noCompress "lite"
     }
 
-    compileSdkVersion 33
+    compileSdkVersion 35
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
@@ -41,10 +42,19 @@ android {
 
     defaultConfig {
         applicationId "com.example.FaceNet"
-        minSdkVersion 21
-        targetSdkVersion 31
+        minSdkVersion 23
+        targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
     buildTypes {
@@ -59,5 +69,10 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.6.10"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
+}
+
+// Ensure Kotlin uses Java 17 toolchain
+kotlin {
+    jvmToolchain(17)
 }
