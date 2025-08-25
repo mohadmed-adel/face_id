@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:face_net_authentication/pages/widgets/app_button.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'home.dart';
 
 class Profile extends StatelessWidget {
@@ -68,45 +68,7 @@ class Profile extends StatelessWidget {
                       style: TextStyle(fontSize: 16),
                       textAlign: TextAlign.left,
                     ),
-                    Divider(
-                      height: 30,
-                    ),
-                    InkWell(
-                      onTap: _launchURL,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.black,
-                          boxShadow: <BoxShadow>[
-                            BoxShadow(
-                              color: Colors.blue.withOpacity(0.1),
-                              blurRadius: 1,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        padding:
-                            EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                        width: MediaQuery.of(context).size.width * 0.8,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'CONTRIBUTE',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            SizedBox(
-                              width: 10,
-                            ),
-                            FaIcon(
-                              FontAwesomeIcons.github,
-                              color: Colors.white,
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
+                    Divider(height: 30),
                   ],
                 ),
               ),

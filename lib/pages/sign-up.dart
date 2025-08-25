@@ -71,6 +71,38 @@ class SignUpState extends State<SignUp> {
 
       return false;
     } else {
+      // Validate face bounding box size and position vs image size
+      try {
+        final Size? imgSize = imageSize;
+        final Face? fd = faceDetected;
+        if (imgSize == null || fd == null) return false;
+        final rect = fd.boundingBox;
+        final double boxArea = rect.width * rect.height;
+        final double imgArea = imgSize.width * imgSize.height;
+        // Require at least 5% of the frame to avoid tiny/blurred faces
+        if (boxArea / imgArea < 0.05) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              content: Text('Face too small in the frame. Move closer.'),
+            ),
+          );
+          return false;
+        }
+        // Basic in-frame check
+        if (rect.left < 0 ||
+            rect.top < 0 ||
+            rect.right > imgSize.width ||
+            rect.bottom > imgSize.height) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              content: Text('Keep your entire face within the frame.'),
+            ),
+          );
+          return false;
+        }
+      } catch (_) {}
       // Trigger one embedding capture from the live image stream
       setState(() {
         _saving = true;

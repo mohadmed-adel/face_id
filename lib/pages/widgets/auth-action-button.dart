@@ -110,6 +110,24 @@ class _AuthActionButtonState extends State<AuthActionButton> {
         });
         return;
       }
+      // During registration, block if this sample matches any existing user
+      if (!widget.isLogin) {
+        final existing = await _mlService.predictFromEmbedding(emb);
+        if (existing != null) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              content: Text('This face seems already registered as ' +
+                  existing.user +
+                  '. Please use another account or sign in.'),
+            ),
+          );
+          setState(() {
+            _isCapturing = false;
+          });
+          return;
+        }
+      }
       _enrollmentSamples.add(emb);
       setState(() {
         _isCapturing = false;
