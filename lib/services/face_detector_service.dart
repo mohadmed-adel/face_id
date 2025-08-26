@@ -5,7 +5,7 @@ import 'package:face_net_authentication/locator.dart';
 import 'package:face_net_authentication/services/camera.service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FaceDetectorService {
   CameraService _cameraService = locator<CameraService>();
@@ -18,8 +18,8 @@ class FaceDetectorService {
   bool get faceDetected => _faces.isNotEmpty;
 
   void initialize() {
-    _faceDetector = GoogleMlKit.vision.faceDetector(
-      FaceDetectorOptions(
+    _faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
         performanceMode: FaceDetectorMode.accurate,
       ),
     );
@@ -57,8 +57,8 @@ class FaceDetectorService {
   }
 
   Future<List<Face>> detect(CameraImage image, InputImageRotation rotation) {
-    final faceDetector = GoogleMlKit.vision.faceDetector(
-      FaceDetectorOptions(
+    final faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
         performanceMode: FaceDetectorMode.accurate,
         enableLandmarks: true,
       ),
