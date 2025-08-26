@@ -1,5 +1,5 @@
+import 'package:example/home.dart';
 import 'package:example/locator.dart';
-import 'package:example/pages/sign-up.dart';
 import 'package:flutter/material.dart';
 
 void main() async {
@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: SignUp(),
+      home: MyHomePage(),
     );
   }
 }

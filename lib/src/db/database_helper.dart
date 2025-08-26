@@ -11,8 +11,7 @@ class DatabaseHelper {
 
   static final table = 'users';
   static final columnId = 'id';
-  static final columnUser = 'user';
-  static final columnPassword = 'password';
+
   static final columnModelData = 'model_data';
 
   DatabaseHelper._privateConstructor();
@@ -38,8 +37,7 @@ class DatabaseHelper {
     await db.execute('''
           CREATE TABLE $table (
             $columnId INTEGER PRIMARY KEY,
-            $columnUser TEXT NOT NULL,
-            $columnPassword TEXT NOT NULL,
+           
             $columnModelData TEXT NOT NULL
           )
           ''');
@@ -54,18 +52,6 @@ class DatabaseHelper {
     Database db = await instance.database;
     List<Map<String, dynamic>> users = await db.query(table);
     return users.map((u) => User.fromMap(u)).toList();
-  }
-
-  Future<User?> getUserByUsername(String username) async {
-    Database db = await instance.database;
-    final List<Map<String, dynamic>> rows = await db.query(
-      table,
-      where: '$columnUser = ?',
-      whereArgs: [username],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return User.fromMap(rows.first);
   }
 
   Future<int> deleteAll() async {
