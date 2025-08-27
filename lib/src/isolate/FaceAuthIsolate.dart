@@ -89,7 +89,6 @@ class FaceAuthIsolate {
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
       try {
-        log("mano start");
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -166,7 +165,6 @@ class FaceAuthIsolate {
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
       try {
-        log("mano start");
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -183,11 +181,7 @@ class FaceAuthIsolate {
         final face = faces.first;
 
         final FrameResponse res = await _isolateHelper.sendAndWait(
-          FrameRequest(
-            image: image,
-            face: face,
-            requiredSamples: 1,
-          ),
+          FrameRequest(image: image, face: face, requiredSamples: 1),
         );
 
         if (res.success) {
@@ -199,6 +193,8 @@ class FaceAuthIsolate {
         }
       } catch (e) {
         finish(null, FaceAuthState.failed);
+      } finally {
+        _detectFaceProcessing = false;
       }
       _detectFaceProcessing = false;
     });
