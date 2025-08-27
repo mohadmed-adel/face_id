@@ -8,7 +8,7 @@ class User {
 
   static User fromMap(Map<String, dynamic> user) {
     return User(
-      id: (jsonDecode(user['id'])).toString(),
+      id: (jsonDecode(user['id'].toString())).toString(),
       modelData: jsonDecode(user['model_data']),
     );
   }
