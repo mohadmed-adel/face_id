@@ -4,6 +4,6 @@ import 'package:get_it/get_it.dart';
 final locator = GetIt.instance;
 
 Future setupServices() async {
-  locator.registerSingleton<FaceAuth>(FaceAuth());
-  await locator.get<FaceAuth>().initialize();
+  locator.registerSingleton<FaceAuthIsolate>(FaceAuthIsolate());
+  await locator.get<FaceAuthIsolate>().initialize();
 }

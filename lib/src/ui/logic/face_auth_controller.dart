@@ -2,11 +2,12 @@ import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
+import 'package:face_recognition_auth/src/isolate/FaceAuthIsolate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FaceAuthController extends ChangeNotifier {
-  final FaceAuth _faceAuth = FaceAuth();
+  final FaceAuthIsolate _faceAuth = FaceAuthIsolate();
   FaceAuthState? _state;
   User? _user;
   List<Face>? _faces;
@@ -58,7 +59,7 @@ class FaceAuthController extends ChangeNotifier {
 
     try {
       _user = await _faceAuth.loginWithCamera(
-          onFaceDetected: (faces, image) {
+        onFaceDetected: (faces, image) {
           _updateFace(faces, image);
         },
         onProgress: (data) {

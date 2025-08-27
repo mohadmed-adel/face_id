@@ -26,7 +26,7 @@ class _MyHomePageState extends State<MyHomePage> {
               onSelected: (value) async {
                 switch (value) {
                   case 'Clear DB':
-                    await locator.get<FaceAuth>().deleteDatabase();
+                    await locator.get<FaceAuthIsolate>().deleteDatabase();
                     break;
                 }
               },

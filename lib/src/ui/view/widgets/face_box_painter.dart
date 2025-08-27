@@ -15,7 +15,7 @@ class FaceBoxPainter extends CustomPainter {
 
     for (var face in faces) {
       final rect = face.boundingBox;
-      final scaleX = size.width / imageSize.height;  
+      final scaleX = size.width / imageSize.height;
       final scaleY = size.height / imageSize.width;
 
       final left = rect.left * scaleX;

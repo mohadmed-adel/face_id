@@ -52,29 +52,7 @@ class FaceAuthView extends StatelessWidget {
             ),
           );
           return body;
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              if (ctrl.cameraService.cameraController != null)
-                CameraPreview(ctrl.cameraService.cameraController!),
-              if (ctrl.cameraService.cameraController != null)
-                CameraPreview(ctrl.cameraService.cameraController!),
-              CustomPaint(
-                painter: FaceBoxPainter(ctrl.faces ?? [], ctrl.imageSize!),
-              ),
-              // Align(
-              //   alignment: Alignment.bottomLeft,
-              //   child: Container(
-              //     color: Colors.black54,
-              //     padding: const EdgeInsets.all(16),
-              //     child: Text(
-              //       controller.face?.toString() ?? "Idle",
-              //       style: const TextStyle(color: Colors.white, fontSize: 18),
-              //     ),
-              //   ),
-              // ),
-            ],
-          );
+        
         },
       ),
     );

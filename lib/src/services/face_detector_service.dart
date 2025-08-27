@@ -24,7 +24,7 @@ class FaceDetectorService {
     );
   }
 
-  Future<void> detectFacesFromImage(CameraImage image) async {
+  Future<List<Face>> detectFacesFromImage(CameraImage image) async {
     final InputImageMetadata firebaseImageMetadata = InputImageMetadata(
       rotation:
           _cameraService.cameraRotation ?? InputImageRotation.rotation0deg,
@@ -46,6 +46,7 @@ class FaceDetectorService {
     );
 
     _faces = await _faceDetector.processImage(firebaseVisionImage);
+    return _faces;
   }
 
   Future<List<Face>> detect(CameraImage image, InputImageRotation rotation) {

@@ -20,7 +20,6 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
   }
 
   void _updateStatus(FaceAuthState state) {
-    setState(() {
       switch (state) {
         case FaceAuthState.cameraOpened:
           _status = "📷 Camera opened...";
@@ -44,7 +43,6 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
           _status = "⌛ Timeout!";
           break;
       }
-    });
   }
 
   Future<void> _startFlow() async {

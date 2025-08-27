@@ -65,6 +65,53 @@ class MLService {
     }
   }
 
+  Future<void> initializeFromBytes(Uint8List modelBytes) async {
+  try {
+    if (Platform.isAndroid) {
+      final cpuOptions = InterpreterOptions()
+        ..threads = 2
+        ..useNnApiForAndroid = false;
+
+      _interpreter = Interpreter.fromBuffer(
+        modelBytes,
+        options: cpuOptions,
+      );
+      dev.log('TFLite loaded with CPU (XNNPACK) on Android');
+      return;
+    }
+
+    if (Platform.isIOS) {
+      try {
+        final gpu = GpuDelegate();
+        final options = InterpreterOptions()..addDelegate(gpu);
+
+        _interpreter = Interpreter.fromBuffer(
+          modelBytes,
+          options: options,
+        );
+        dev.log('TFLite loaded with Metal GPU delegate');
+        return;
+      } catch (e) {
+        dev.log('iOS GPU delegate failed, falling back to CPU. $e');
+      }
+    }
+
+    // fallback CPU
+    final cpuOptions = InterpreterOptions()
+      ..threads = 1
+      ..useNnApiForAndroid = false;
+
+    _interpreter = Interpreter.fromBuffer(
+      modelBytes,
+      options: cpuOptions,
+    );
+    dev.log('TFLite loaded with CPU (fallback)');
+  } catch (e) {
+    dev.log('Failed to load model. $e');
+  }
+}
+
+
   void setCurrentPrediction(CameraImage cameraImage, Face? face) {
     if (_interpreter == null) throw Exception('Interpreter is null');
     if (face == null) throw Exception('Face is null');

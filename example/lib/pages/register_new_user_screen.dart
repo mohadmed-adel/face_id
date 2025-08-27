@@ -20,32 +20,30 @@ class _RegisterNewUserScreenState extends State<RegisterNewUserScreen> {
   }
 
   void _updateStatus(FaceAuthState state) {
-    setState(() {
-      switch (state) {
-        case FaceAuthState.cameraOpened:
-          _status = "📷 Camera opened...";
-          break;
-        case FaceAuthState.detectingFace:
-          _status = "🔍 Detecting face...";
-          break;
-        case FaceAuthState.collectingSamples:
-          _status = "⏳ Collecting samples...";
-          break;
-        case FaceAuthState.matching:
-          _status = "🤝 Matching face...";
-          break;
-        case FaceAuthState.success:
-          _status = "✅ Success!";
+    switch (state) {
+      case FaceAuthState.cameraOpened:
+        _status = "📷 Camera opened...";
+        break;
+      case FaceAuthState.detectingFace:
+        _status = "🔍 Detecting face...";
+        break;
+      case FaceAuthState.collectingSamples:
+        _status = "⏳ Collecting samples...";
+        break;
+      case FaceAuthState.matching:
+        _status = "🤝 Matching face...";
+        break;
+      case FaceAuthState.success:
+        _status = "✅ Success!";
 
-          break;
-        case FaceAuthState.failed:
-          _status = "❌ Failed!";
-          break;
-        case FaceAuthState.timeout:
-          _status = "⌛ Timeout!";
-          break;
-      }
-    });
+        break;
+      case FaceAuthState.failed:
+        _status = "❌ Failed!";
+        break;
+      case FaceAuthState.timeout:
+        _status = "⌛ Timeout!";
+        break;
+    }
   }
 
   Future<void> _startFlow() async {
