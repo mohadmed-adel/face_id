@@ -1,6 +1,3 @@
-import 'package:camera/camera.dart';
-import 'package:example/locator.dart';
-import 'package:example/pages/widgets/face_box_painter.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -12,7 +9,7 @@ class LoginByFaceScreen extends StatefulWidget {
 }
 
 class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
-  final FaceAuth _faceAuth = locator.get<FaceAuth>();
+  final FaceAuthController _controller = FaceAuthController();
   String _status = "Initializing...";
   User? _result;
 
@@ -20,12 +17,6 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
   void initState() {
     super.initState();
     _startFlow();
-  }
-
-  Future<void> _startFlow() async {
-    _faceAuth.loginWithCamera(onProgress: _updateStatus).then((user) {
-      setState(() => _result = user);
-    });
   }
 
   void _updateStatus(FaceAuthState state) {
@@ -45,7 +36,6 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
           break;
         case FaceAuthState.success:
           _status = "✅ Success!";
-
           break;
         case FaceAuthState.failed:
           _status = "❌ Failed!";
@@ -57,23 +47,46 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
     });
   }
 
+  Future<void> _startFlow() async {
+    await _controller.initialize();
+
+    _controller.login(
+      onProgress: _updateStatus,
+      onDone: (user) {
+        setState(() {
+          _result = user;
+          if (user != null) {
+            _status = "✅ Welcome back: ${user.id}";
+          } else {
+            _status = "❌ Login failed";
+          }
+        });
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = _faceAuth.cameraService.cameraController;
     return Scaffold(
       body: Stack(
         children: [
-          if (controller != null && controller.value.isInitialized)
-            CameraPreview(controller),
+          // الكاميرا
+          FaceAuthView(controller: _controller),
 
-          // Face boxes overlay
-          if (_faceAuth.faceDetectorService.faces.isNotEmpty)
-            CustomPaint(
-              painter: FaceBoxPainter(
-                _faceAuth.faceDetectorService.faces,
-                controller!.value.previewSize!,
-              ),
-            ),
+          // Overlay للـ Face Boxes (لو محتاج تفعلها زي register)
+          // if (_controller.faceDetectorService.faces.isNotEmpty)
+          //   CustomPaint(
+          //     painter: FaceBoxPainter(
+          //       _controller.faceDetectorService.faces,
+          //       _controller.cameraService.cameraController!.value.previewSize!,
+          //     ),
+          //   ),
 
           // Status text
           Align(
@@ -82,7 +95,7 @@ class _LoginByFaceScreenState extends State<LoginByFaceScreen> {
               color: Colors.black54,
               padding: const EdgeInsets.all(16),
               child: Text(
-                _result != null ? "Welcome ${_result!.id.toString()}" : _status,
+                _result != null ? "Welcome ${_result!.id}" : _status,
                 style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
