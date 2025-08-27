@@ -25,6 +25,7 @@ class FaceAuth {
   bool _initialized = false;
   late MLService _mlService;
   bool _processing = false;
+  bool _detectFaceProcessing = false;
 
   CameraService get cameraService => _cameraService;
 
@@ -39,6 +40,7 @@ class FaceAuth {
     await _mlService.initialize();
     await _cameraService.initialize();
     _faceDetectorService.initialize();
+    _initialized = true;
     _initialized = true;
   }
 
@@ -81,7 +83,8 @@ class FaceAuth {
     onProgress?.call(FaceAuthState.cameraOpened);
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
-      if (!_processing) return;
+      if (_detectFaceProcessing) return;
+      _detectFaceProcessing = true;
       try {
         onProgress?.call(FaceAuthState.detectingFace);
         await _faceDetectorService.detectFacesFromImage(image);
@@ -100,6 +103,8 @@ class FaceAuth {
           final predicted = await _mlService.predictFromEmbedding(centroid);
           if (predicted != null) {
             finishError(StateError("Face already registered"));
+            _detectFaceProcessing = false;
+
             return;
           }
 
@@ -109,6 +114,7 @@ class FaceAuth {
       } catch (e) {
         finishError(e);
       }
+      _detectFaceProcessing = false;
     });
 
     return completer.future;
@@ -145,17 +151,24 @@ class FaceAuth {
     onProgress?.call(FaceAuthState.cameraOpened);
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
-      if (!_processing) return;
+      if (_detectFaceProcessing) return;
+      _detectFaceProcessing = true;
+
       try {
         onProgress?.call(FaceAuthState.detectingFace);
         await _faceDetectorService.detectFacesFromImage(image);
-        if (_faceDetectorService.faces.isEmpty) return;
+        if (_faceDetectorService.faces.isEmpty) {
+          _detectFaceProcessing = false;
+
+          return;
+        }
 
         final face = _faceDetectorService.faces.first;
         _mlService.setCurrentPrediction(image, face);
         final user = await _mlService.predict();
         if (user != null) finish(user);
       } catch (_) {}
+      _detectFaceProcessing = false;
     });
 
     return completer.future;
