@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:camera/camera.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 typedef FaceAuthProgress = void Function(FaceAuthState state);
+typedef FaceDetectionCallback =
+    void Function(List<Face>? faces, CameraImage image);
 
 enum FaceAuthState {
   cameraOpened,
@@ -41,7 +45,6 @@ class FaceAuth {
     await _cameraService.initialize();
     _faceDetectorService.initialize();
     _initialized = true;
-    _initialized = true;
   }
 
   /// Register user via camera
@@ -49,6 +52,7 @@ class FaceAuth {
     int requiredSamples = 4,
     Duration timeout = const Duration(seconds: 20),
     FaceAuthProgress? onProgress,
+    FaceDetectionCallback? onFaceDetected,
   }) async {
     if (!_initialized) await initialize();
     if (_processing) throw StateError('Another operation in progress');
@@ -83,14 +87,23 @@ class FaceAuth {
     onProgress?.call(FaceAuthState.cameraOpened);
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
+      print('wait face detection...image $image');
+
       if (_detectFaceProcessing) return;
       _detectFaceProcessing = true;
+      print('Starting face detection...');
       try {
         onProgress?.call(FaceAuthState.detectingFace);
         await _faceDetectorService.detectFacesFromImage(image);
-        if (_faceDetectorService.faces.isEmpty) return;
+        if (_faceDetectorService.faces.isEmpty) {
+          onFaceDetected?.call(null, image);
+
+          return;
+        }
 
         final face = _faceDetectorService.faces.first;
+        onFaceDetected?.call(_faceDetectorService.faces, image);
+
         _mlService.setCurrentPrediction(image, face);
         final emb = List.from(_mlService.predictedData);
         if (emb.isEmpty) return;
@@ -124,6 +137,7 @@ class FaceAuth {
   Future<User?> loginWithCamera({
     Duration timeout = const Duration(seconds: 15),
     FaceAuthProgress? onProgress,
+    FaceDetectionCallback? onFaceDetected,
   }) async {
     if (!_initialized) await initialize();
     if (_processing) throw StateError('Another operation in progress');
@@ -159,11 +173,13 @@ class FaceAuth {
         await _faceDetectorService.detectFacesFromImage(image);
         if (_faceDetectorService.faces.isEmpty) {
           _detectFaceProcessing = false;
-
+          onFaceDetected?.call(null, image);
           return;
         }
 
         final face = _faceDetectorService.faces.first;
+        onFaceDetected?.call(_faceDetectorService.faces, image);
+
         _mlService.setCurrentPrediction(image, face);
         final user = await _mlService.predict();
         if (user != null) finish(user);
