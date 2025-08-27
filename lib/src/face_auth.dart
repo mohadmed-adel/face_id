@@ -45,6 +45,7 @@ class FaceAuth {
     await _cameraService.initialize();
     _faceDetectorService.initialize();
     _initialized = true;
+    _initialized = true;
   }
 
   /// Register user via camera
@@ -87,11 +88,8 @@ class FaceAuth {
     onProgress?.call(FaceAuthState.cameraOpened);
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
-      print('wait face detection...image $image');
-
       if (_detectFaceProcessing) return;
       _detectFaceProcessing = true;
-      print('Starting face detection...');
       try {
         onProgress?.call(FaceAuthState.detectingFace);
         await _faceDetectorService.detectFacesFromImage(image);
@@ -116,6 +114,7 @@ class FaceAuth {
           final predicted = await _mlService.predictFromEmbedding(centroid);
           if (predicted != null) {
             finishError(StateError("Face already registered"));
+
             _detectFaceProcessing = false;
 
             return;
@@ -135,6 +134,7 @@ class FaceAuth {
 
   /// Login via camera
   Future<User?> loginWithCamera({
+    int requiredSamples = 4,
     Duration timeout = const Duration(seconds: 15),
     FaceAuthProgress? onProgress,
     FaceDetectionCallback? onFaceDetected,
@@ -143,23 +143,20 @@ class FaceAuth {
     if (_processing) throw StateError('Another operation in progress');
     _processing = true;
 
+    final List<List<num>> samples = [];
     final completer = Completer<User?>();
     Timer? watchdog;
 
-    void finish(User? user) async {
+    void finish(User? user, FaceAuthState state) async {
       await _cameraService.stopImageStreamIfActive();
       _processing = false;
       watchdog?.cancel();
-      if (user != null) {
-        onProgress?.call(FaceAuthState.success);
-      } else {
-        onProgress?.call(FaceAuthState.timeout);
-      }
+      onProgress?.call(state);
       if (!completer.isCompleted) completer.complete(user);
     }
 
     watchdog = Timer(timeout, () {
-      finish(null);
+      finish(null, FaceAuthState.timeout);
     });
 
     onProgress?.call(FaceAuthState.cameraOpened);
@@ -170,6 +167,7 @@ class FaceAuth {
 
       try {
         onProgress?.call(FaceAuthState.detectingFace);
+
         await _faceDetectorService.detectFacesFromImage(image);
         if (_faceDetectorService.faces.isEmpty) {
           _detectFaceProcessing = false;
@@ -181,9 +179,30 @@ class FaceAuth {
         onFaceDetected?.call(_faceDetectorService.faces, image);
 
         _mlService.setCurrentPrediction(image, face);
-        final user = await _mlService.predict();
-        if (user != null) finish(user);
-      } catch (_) {}
+        final emb = List.from(_mlService.predictedData);
+        if (emb.isEmpty) {
+          _detectFaceProcessing = false;
+          return;
+        }
+
+        samples.add(emb.cast<num>());
+        onProgress?.call(FaceAuthState.collectingSamples);
+
+        if (samples.length >= requiredSamples) {
+          final centroid = _mlService.centroidFromSamples(samples);
+          final user = await _mlService.predictFromEmbedding(centroid);
+
+          if (user != null) {
+            finish(user, FaceAuthState.success);
+          } else {
+            finish(null, FaceAuthState.failed);
+          }
+        }
+      } catch (e) {
+        log("login error $e");
+
+        finish(null, FaceAuthState.failed);
+      }
       _detectFaceProcessing = false;
     });
 
