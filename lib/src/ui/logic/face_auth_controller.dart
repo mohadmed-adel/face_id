@@ -1,13 +1,15 @@
+import 'dart:developer';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
-import 'package:face_recognition_auth/src/isolate/FaceAuthIsolate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+ 
 
 class FaceAuthController extends ChangeNotifier {
   final FaceAuthIsolate _faceAuth = FaceAuthIsolate();
+
   FaceAuthState? _state;
   User? _user;
   List<Face>? _faces;
@@ -18,94 +20,111 @@ class FaceAuthController extends ChangeNotifier {
   List<Face>? get faces => _faces;
   Size? get imageSize => _imageSize;
 
+  CameraService get cameraService => _faceAuth.cameraService;
+
+  /// Initialize camera and face recognition isolate
   Future<void> initialize() async {
     await _faceAuth.initialize();
   }
 
+  /// Register a new user
   Future<void> register({
     int samples = 4,
     void Function(User? user)? onDone,
     FaceAuthProgress? onProgress,
   }) async {
-    _user = null;
-    _update(FaceAuthState.cameraOpened);
+    _resetUser();
+    _setState(FaceAuthState.cameraOpened);
 
     try {
       _user = await _faceAuth.registerWithCamera(
         requiredSamples: samples,
         onProgress: (data) {
+          _setState(data);
           onProgress?.call(data);
-          _update(data);
         },
-        onFaceDetected: (faces, image) {
-          _updateFace(faces, image);
-        },
+        onFaceDetected: _updateFace,
       );
-      _update(FaceAuthState.success);
+
+      _setState(FaceAuthState.success);
     } catch (_) {
-      _update(FaceAuthState.failed);
+      _setState(FaceAuthState.failed);
     }
 
-    notifyListeners();
     onDone?.call(_user);
   }
 
+  /// Login existing user
   Future<void> login({
     void Function(User? user)? onDone,
     FaceAuthProgress? onProgress,
   }) async {
-    _user = null;
-    _update(FaceAuthState.cameraOpened);
+    _resetUser();
+    _setState(FaceAuthState.cameraOpened);
 
     try {
       _user = await _faceAuth.loginWithCamera(
-        onFaceDetected: (faces, image) {
-          _updateFace(faces, image);
-        },
+        onFaceDetected: _updateFace,
         onProgress: (data) {
+          _setState(data);
           onProgress?.call(data);
-          _update(data);
         },
       );
-      _update(FaceAuthState.success);
+
+      _setState(FaceAuthState.success);
     } catch (_) {
-      _update(FaceAuthState.failed);
+      _setState(FaceAuthState.failed);
     }
 
-    notifyListeners();
     onDone?.call(_user);
   }
 
-  void _update(FaceAuthState state) {
+  /// Update the controller state
+  void _setState(FaceAuthState state) {
     _state = state;
     notifyListeners();
   }
 
+  /// Update detected faces
   void _updateFace(List<Face>? faces, CameraImage image) {
     _faces = faces;
-    _imageSize = updateImageSize(image);
+    _imageSize ??= previewSize;
     notifyListeners();
   }
 
+  /// Reset user before login/register
+  void _resetUser() {
+    _user = null;
+    _faces = null;
+  }
+
+  /// Clean up resources
   @override
   void dispose() {
-    if (cameraService.cameraController != null &&
-        cameraService.cameraController!.value.isInitialized &&
-        cameraService.cameraController!.value.isStreamingImages) {
-      cameraService.cameraController!.stopImageStream();
-    }
+    _stopCameraStream();
     cameraService.cameraController?.dispose();
-
     _faceAuth.cameraService.dispose();
     _faceAuth.dispose();
     super.dispose();
   }
 
-  Size updateImageSize(CameraImage? image) {
-    if (image == null) return Size.zero;
+  void _stopCameraStream() {
+    final controller = cameraService.cameraController;
+    if (controller != null &&
+        controller.value.isInitialized &&
+        controller.value.isStreamingImages) {
+      controller.stopImageStream();
+    }
+  }
 
+  /// Helpers for image size
+  Size _calculateImageSize(CameraImage? image) {
+    if (image == null) return Size.zero;
     return Size(image.width.toDouble(), image.height.toDouble());
   }
 
-  CameraService get cameraService => _faceAuth.cameraService;
+  Size get previewSize => Size(
+        cameraService.cameraController!.value.previewSize!.height,
+        cameraService.cameraController!.value.previewSize!.width,
+      );
 }

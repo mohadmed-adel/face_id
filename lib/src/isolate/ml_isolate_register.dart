@@ -25,7 +25,7 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
     }
 
     // ========= (٢)   FrameRequest =========
-      FrameRequest request = message[0] as FrameRequest;
+    FrameRequest request = message[0] as FrameRequest;
     final SendPort replyPort = message[1] as SendPort;
     try {
       if (request.face == null) {
@@ -34,11 +34,10 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
         );
         return;
       }
-      if(request.image==null)return;
-      _mlService.setCurrentPrediction2(request.image!, request.face);
+      if (request.image == null) return;
+      _mlService.setCurrentPrediction(request.image!, request.face);
       final emb = List.from(_mlService.predictedData);
       request.image = null;
-      if (emb.isEmpty) return;
 
       samples.add(emb.cast<num>());
       // onProgress?.call(FaceAuthState.collectingSamples);
@@ -46,6 +45,7 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
         final centroid = _mlService.centroidFromSamples(samples);
         final predicted = await _mlService.predictFromEmbedding(centroid);
         if (predicted != null) {
+          
           replyPort.send(
             FrameResponse(
               user: null,

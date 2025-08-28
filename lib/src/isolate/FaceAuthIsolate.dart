@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:developer';
-import 'dart:ui';
-import 'package:image/image.dart' as imglib;
 
 import 'package:camera/camera.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
@@ -9,6 +7,7 @@ import 'package:face_recognition_auth/src/isolate/frame_request.dart';
 import 'package:face_recognition_auth/src/isolate/isolate_helper.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as imglib;
 
 class FaceAuthIsolate {
   FaceAuthIsolate();
@@ -28,7 +27,7 @@ class FaceAuthIsolate {
   late Uint8List modelBytes;
 
   int frameCount = 0;
-  final int skipFrames = 15;
+  final int skipFrames = 14;
 
   /// Initialize services
   Future<void> initialize() async {
@@ -103,7 +102,6 @@ class FaceAuthIsolate {
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
           onFaceDetected?.call(null, image);
-
           return;
         } else {
           onFaceDetected?.call(faces, image);
@@ -113,12 +111,11 @@ class FaceAuthIsolate {
         _detectFaceProcessing = true;
 
         final face = faces.first;
-      final  imageCroped = _cropFace(image, face);
 
         if (!_cameraService.cameraController!.value.isStreamingImages) return;
         final FrameResponse res = await _isolateHelper.sendAndWait(
           FrameRequest(
-            image: imageCroped,
+            image: image,
             face: face,
             requiredSamples: requiredSamples,
           ),
@@ -127,6 +124,7 @@ class FaceAuthIsolate {
 
         if (res.success) {
           finishOk(res.user!);
+          log("mano ${res.msg}");
         } else {
           log("mano ${res.msg}");
           // finishError(StateError(res.msg ?? "Unknown error"));
@@ -196,14 +194,14 @@ class FaceAuthIsolate {
         _detectFaceProcessing = true;
 
         final face = faces.first;
-      final  imageCroped = _cropFace(image, face);
 
         final FrameResponse res = await _isolateHelper.sendAndWait(
-          FrameRequest(image: imageCroped, face: face, requiredSamples: 1),
+          FrameRequest(image: image, face: face, requiredSamples: 1),
         );
 
         if (res.success) {
           finish(res.user, FaceAuthState.success);
+          log("mano ${res.msg}");
         } else {
           log("mano ${res.msg}");
 
