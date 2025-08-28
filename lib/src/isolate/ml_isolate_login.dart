@@ -36,7 +36,7 @@ void mlLoginWorkerEntry(SendPort mainSendPort) {
       }
 
       if (request.image == null) return;
-      _mlService.setCurrentPrediction(request.image!, request.face);
+      _mlService.setCurrentPrediction2(request.image!, request.face);
       final emb = List.from(_mlService.predictedData);
       request.image = null;
       if (emb.isEmpty) return;

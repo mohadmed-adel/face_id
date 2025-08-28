@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:ui';
+import 'package:image/image.dart' as imglib;
 
+import 'package:camera/camera.dart';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
 import 'package:face_recognition_auth/src/isolate/frame_request.dart';
 import 'package:face_recognition_auth/src/isolate/isolate_helper.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FaceAuthIsolate {
   FaceAuthIsolate();
@@ -92,9 +96,9 @@ class FaceAuthIsolate {
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
       try {
-            frameCount++;
+        frameCount++;
 
-        if (frameCount % skipFrames != 0) return; 
+        if (frameCount % skipFrames != 0) return;
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -109,11 +113,12 @@ class FaceAuthIsolate {
         _detectFaceProcessing = true;
 
         final face = faces.first;
+      final  imageCroped = _cropFace(image, face);
 
         if (!_cameraService.cameraController!.value.isStreamingImages) return;
         final FrameResponse res = await _isolateHelper.sendAndWait(
           FrameRequest(
-            image: image,
+            image: imageCroped,
             face: face,
             requiredSamples: requiredSamples,
           ),
@@ -176,7 +181,7 @@ class FaceAuthIsolate {
       try {
         frameCount++;
 
-        if (frameCount % skipFrames != 0) return; 
+        if (frameCount % skipFrames != 0) return;
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -191,9 +196,10 @@ class FaceAuthIsolate {
         _detectFaceProcessing = true;
 
         final face = faces.first;
+      final  imageCroped = _cropFace(image, face);
 
         final FrameResponse res = await _isolateHelper.sendAndWait(
-          FrameRequest(image: image, face: face, requiredSamples: 1),
+          FrameRequest(image: imageCroped, face: face, requiredSamples: 1),
         );
 
         if (res.success) {
@@ -223,5 +229,26 @@ class FaceAuthIsolate {
 
   Future deleteDatabase() async {
     await _database.deleteAll();
+  }
+
+  imglib.Image _cropFace(CameraImage image, Face faceDetected) {
+    imglib.Image convertedImage = _convertCameraImage(image);
+    double x = faceDetected.boundingBox.left - 10.0;
+    double y = faceDetected.boundingBox.top - 10.0;
+    double w = faceDetected.boundingBox.width + 10.0;
+    double h = faceDetected.boundingBox.height + 10.0;
+    return imglib.copyCrop(
+      convertedImage,
+      x: x.round(),
+      y: y.round(),
+      width: w.round(),
+      height: h.round(),
+    );
+  }
+
+  imglib.Image _convertCameraImage(CameraImage image) {
+    var img = convertToImage(image);
+    var img1 = imglib.copyRotate(img, angle: -90);
+    return img1;
   }
 }

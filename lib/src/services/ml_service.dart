@@ -126,6 +126,20 @@ class MLService {
     _predictedData = List.from(output);
   }
 
+  void setCurrentPrediction2(imglib.Image croppedImage, Face? face) {
+    if (_interpreter == null) throw Exception('Interpreter is null');
+    if (face == null) throw Exception('Face is null');
+    List input = _preProcess2(croppedImage, face);
+
+    input = input.reshape([1, 112, 112, 3]);
+    List output = List.generate(1, (index) => List.filled(192, 0));
+
+    _interpreter?.run(input, output);
+    output = output.reshape([192]);
+
+    _predictedData = List.from(output);
+  }
+
   Future<User?> predict() async {
     return _searchResult(_predictedData);
   }
@@ -137,6 +151,12 @@ class MLService {
 
   List _preProcess(CameraImage image, Face faceDetected) {
     imglib.Image croppedImage = _cropFace(image, faceDetected);
+    imglib.Image img = imglib.copyResizeCropSquare(croppedImage, size: 112);
+
+    Float32List imageAsList = imageToByteListFloat32(img);
+    return imageAsList;
+  }
+  List _preProcess2(imglib.Image croppedImage, Face faceDetected) {
     imglib.Image img = imglib.copyResizeCropSquare(croppedImage, size: 112);
 
     Float32List imageAsList = imageToByteListFloat32(img);
