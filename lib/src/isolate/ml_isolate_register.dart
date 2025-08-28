@@ -21,11 +21,11 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
       await _mlService.initializeFromBytes(modelBytes);
       BackgroundIsolateBinaryMessenger.ensureInitialized(message[1]!);
       _database = DatabaseHelper.instance;
-      return;  
+      return;
     }
 
     // ========= (٢)   FrameRequest =========
-    final FrameRequest request = message[0] as FrameRequest;
+      FrameRequest request = message[0] as FrameRequest;
     final SendPort replyPort = message[1] as SendPort;
     try {
       if (request.face == null) {
@@ -34,13 +34,14 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
         );
         return;
       }
-      _mlService.setCurrentPrediction(request.image, request.face);
+      if(request.image==null)return;
+      _mlService.setCurrentPrediction(request.image!, request.face);
       final emb = List.from(_mlService.predictedData);
+      request.image = null;
       if (emb.isEmpty) return;
 
       samples.add(emb.cast<num>());
       // onProgress?.call(FaceAuthState.collectingSamples);
-
       if (samples.length >= request.requiredSamples) {
         final centroid = _mlService.centroidFromSamples(samples);
         final predicted = await _mlService.predictFromEmbedding(centroid);
@@ -52,10 +53,10 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
               msg: 'Face already registered',
             ),
           );
+          samples.clear();
 
           return;
         }
-
         int id = await _database.insert(User(modelData: samples));
         replyPort.send(
           FrameResponse(
@@ -64,6 +65,7 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
             msg: 'success',
           ),
         );
+        samples.clear();
       } else {
         replyPort.send(
           FrameResponse(
@@ -80,4 +82,3 @@ void mlRegisterWorkerEntry(SendPort mainSendPort) {
     }
   });
 }
- 

@@ -8,50 +8,59 @@ import 'package:face_recognition_auth/src/isolate/ml_isolate_login.dart';
 import 'package:face_recognition_auth/src/isolate/ml_isolate_register.dart';
 
 class IsolateHelper {
-  late SendPort _sendPort;
-  late Isolate _isolate;
+  SendPort? _sendPort;
+  Isolate? _isolate;
   final Completer<void> _initCompleter = Completer<void>();
+  ReceivePort? _receivePort; // نخزنها علشان نقدر نقفلها بعدين
 
- 
-Future<void> init({
-  bool forRegister = true,
-  required Uint8List interpreterBytes,
-  required RootIsolateToken rootIsolateToken,
-}) async {
-  final receivePort = ReceivePort();
+  Future<void> init({
+    bool forRegister = true,
+    required Uint8List interpreterBytes,
+    required RootIsolateToken rootIsolateToken,
+  }) async {
+    _receivePort = ReceivePort();
 
-  _isolate = await Isolate.spawn(
-    forRegister ? mlRegisterWorkerEntry : mlLoginWorkerEntry,
-    receivePort.sendPort,
-  );
+    _isolate = await Isolate.spawn(
+      forRegister ? mlRegisterWorkerEntry : mlLoginWorkerEntry,
+      _receivePort!.sendPort,
+    );
 
+    _receivePort!.listen((message) {
+      if (message is SendPort) {
+        _sendPort = message;
 
-  receivePort.listen((message) {
-    if (message is SendPort) {
-      _sendPort = message;
+        _sendPort?.send([
+          interpreterBytes,
+          rootIsolateToken,
+        ]);
 
-      _sendPort?.send([
-        interpreterBytes,
-        rootIsolateToken,
-      ]);
+        if (!_initCompleter.isCompleted) {
+          _initCompleter.complete();
+        }
+      }
+    });
 
-      _initCompleter.complete();
-    }
-  });
-
-  await _initCompleter.future;
-}
+    await _initCompleter.future;
+  }
 
   Future<FrameResponse> sendAndWait(FrameRequest request) async {
     final responsePort = ReceivePort();
-    _sendPort.send([request, responsePort.sendPort]);
+    _sendPort?.send([request, responsePort.sendPort]);
 
-    final result = await responsePort.first as FrameResponse;
-    responsePort.close();
-    return result;
+    try {
+      final result = await responsePort.first as FrameResponse;
+      return result;
+    } finally {
+      responsePort.close(); // مهم علشان ما يفضلش مفتوح
+    }
   }
 
   void dispose() {
-    _isolate.kill(priority: Isolate.immediate);
+    try {
+      _receivePort?.close(); // نقفل الـ receivePort الأساسي
+      _isolate?.kill(priority: Isolate.immediate);
+      _sendPort = null;
+      _isolate = null;
+    } catch (_) {}
   }
 }

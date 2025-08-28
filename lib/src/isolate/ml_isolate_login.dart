@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'package:face_recognition_auth/face_recognition_auth.dart';
 import 'package:face_recognition_auth/src/isolate/frame_request.dart';
 import 'package:flutter/services.dart';
- 
+
 /// Entry point for the isolate
 void mlLoginWorkerEntry(SendPort mainSendPort) {
   final port = ReceivePort();
@@ -20,7 +20,7 @@ void mlLoginWorkerEntry(SendPort mainSendPort) {
       await _mlService.initializeFromBytes(modelBytes);
       BackgroundIsolateBinaryMessenger.ensureInitialized(message[1]!);
 
-      return;  
+      return;
     }
 
     // ========= (٢)  FrameRequest =========
@@ -35,8 +35,10 @@ void mlLoginWorkerEntry(SendPort mainSendPort) {
         return;
       }
 
-      _mlService.setCurrentPrediction(request.image, request.face);
+      if (request.image == null) return;
+      _mlService.setCurrentPrediction(request.image!, request.face);
       final emb = List.from(_mlService.predictedData);
+      request.image = null;
       if (emb.isEmpty) return;
 
       samples.add(emb.cast<num>()); //
@@ -45,6 +47,8 @@ void mlLoginWorkerEntry(SendPort mainSendPort) {
         final centroid = _mlService.centroidFromSamples(samples);
         final user = await _mlService.predictFromEmbedding(centroid);
         if (user != null) {
+          samples.clear();
+
           replyPort.send(
             FrameResponse(user: user, success: true, msg: 'success'),
           );

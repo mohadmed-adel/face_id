@@ -4,7 +4,7 @@ import 'package:face_recognition_auth/face_recognition_auth.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FrameRequest {
-  final CameraImage image;
+    CameraImage? image;
   final Face? face;
   final int requiredSamples;
  

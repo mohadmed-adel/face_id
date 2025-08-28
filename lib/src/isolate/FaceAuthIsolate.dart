@@ -23,6 +23,9 @@ class FaceAuthIsolate {
 
   late Uint8List modelBytes;
 
+  int frameCount = 0;
+  final int skipFrames = 15;
+
   /// Initialize services
   Future<void> initialize() async {
     _database = DatabaseHelper.instance;
@@ -89,6 +92,9 @@ class FaceAuthIsolate {
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
       try {
+            frameCount++;
+
+        if (frameCount % skipFrames != 0) return; 
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -104,6 +110,7 @@ class FaceAuthIsolate {
 
         final face = faces.first;
 
+        if (!_cameraService.cameraController!.value.isStreamingImages) return;
         final FrameResponse res = await _isolateHelper.sendAndWait(
           FrameRequest(
             image: image,
@@ -111,6 +118,7 @@ class FaceAuthIsolate {
             requiredSamples: requiredSamples,
           ),
         );
+        if (!_cameraService.cameraController!.value.isStreamingImages) return;
 
         if (res.success) {
           finishOk(res.user!);
@@ -120,8 +128,9 @@ class FaceAuthIsolate {
         }
       } catch (e) {
         finishError(e);
+      } finally {
+        _detectFaceProcessing = false;
       }
-      _detectFaceProcessing = false;
     });
 
     return completer.future;
@@ -165,6 +174,9 @@ class FaceAuthIsolate {
     await _cameraService.stopImageStreamIfActive();
     await _cameraService.cameraController?.startImageStream((image) async {
       try {
+        frameCount++;
+
+        if (frameCount % skipFrames != 0) return; 
         onProgress?.call(FaceAuthState.detectingFace);
         final faces = await _faceDetectorService.detectFacesFromImage(image);
         if (faces.isEmpty) {
@@ -204,7 +216,6 @@ class FaceAuthIsolate {
 
   Future<void> dispose() async {
     _isolateHelper.dispose();
-
     await _cameraService.stopImageStreamIfActive();
     _faceDetectorService.dispose();
     await _cameraService.dispose();
